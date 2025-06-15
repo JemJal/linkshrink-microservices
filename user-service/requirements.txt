@@ -1,0 +1,9 @@
+# user-service/requirements.txt
+
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+passlib==1.7.4  # Pin passlib version
+bcrypt==4.0.1   # Pin a compatible bcrypt version
+python-jose[cryptography]

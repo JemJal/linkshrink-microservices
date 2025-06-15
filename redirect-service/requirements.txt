@@ -1,0 +1,4 @@
+fastapi
+uvicorn
+redis
+pika   # RabbitMQ client library

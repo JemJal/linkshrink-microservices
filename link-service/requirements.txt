@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+nanoid  # For generating short codes
