@@ -1,3 +1,4 @@
+# variables.tf
 variable "db_password" {
   description = "The password for the RDS database"
   type        = string
@@ -8,4 +9,10 @@ variable "image_tag" {
   description = "The tag of the Docker image to deploy"
   type        = string
   default     = "latest" # We'll override this in our CI/CD pipeline
+}
+
+variable "aws_region" {
+  description = "The AWS region to deploy resources in."
+  type        = string
+  default     = "eu-north-1"
 }

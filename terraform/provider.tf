@@ -1,3 +1,5 @@
+# provider.tf
+
 # Specifies the required provider (AWS) and its version.
 terraform {
   required_providers {
@@ -10,5 +12,5 @@ terraform {
 
 # Configures the AWS provider, setting the region.
 provider "aws" {
-  region = "eu-north-1" # Or your chosen region
+  region = var.aws_region
 }
