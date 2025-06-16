@@ -1,6 +1,7 @@
 # 1. ECR Repository for the user-service
 resource "aws_ecr_repository" "user_service" {
   name = "user-service"
+  force_delete = true
 }
 
 # 2. Database Subnet Group (tells RDS which subnets it can live in)
