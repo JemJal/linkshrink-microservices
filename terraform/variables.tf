@@ -16,3 +16,15 @@ variable "aws_region" {
   type        = string
   default     = "eu-north-1"
 }
+
+variable "link_db_password" {
+  description = "The password for the link-service RDS database."
+  type        = string
+  sensitive   = true
+}
+
+variable "jwt_secret_key" {
+  description = "The password for the link-service RDS database."
+  type        = string
+  sensitive   = true
+}

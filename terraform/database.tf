@@ -24,3 +24,18 @@ resource "aws_db_instance" "user_db" {
   skip_final_snapshot  = true
   publicly_accessible  = false
 }
+
+resource "aws_db_instance" "link_db" {
+  identifier           = "link-db-instance" # A unique name
+  instance_class       = "db.t3.micro"
+  allocated_storage    = 20
+  engine               = "postgres"
+  engine_version       = "15.7" # Use the same version as before
+  username             = "linkdbuser" # A different username
+  password             = var.link_db_password # Using the new variable
+  db_name              = "link_db" # The name of the database inside the instance
+  db_subnet_group_name = aws_db_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  skip_final_snapshot  = true
+  publicly_accessible  = false
+}

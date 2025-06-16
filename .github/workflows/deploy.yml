@@ -1,20 +1,17 @@
 # .github/workflows/deploy.yml
 
-name: Deploy LinkShrink Service
+name: Deploy LinkShrink Services
 
 on:
   push:
     branches:
-      - main # This pipeline runs on every push to the main branch
+      - main
 
 jobs:
-  # JOB 1: Builds the code into a Docker image and pushes it to ECR
-  build_and_push_image:
-    name: Build and Push Docker Image
+  build_and_push_images: # Renamed for clarity
+    name: Build and Push Docker Images
     runs-on: ubuntu-latest
 
-    # This 'outputs' section is CRITICAL. It makes the image tag available
-    # to other jobs that 'need' this one.
     outputs:
       image_tag: ${{ steps.tag_image.outputs.tag }}
 
@@ -33,29 +30,34 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      # This step creates a unique tag from the short git commit hash
       - name: Set image tag
         id: tag_image
-        # This writes the tag to a GitHub Actions output variable
         run: echo "tag=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Build, tag, and push image to Amazon ECR
+      # =========================================================================
+      # === THIS IS THE UPDATED STEP ===
+      # =========================================================================
+      - name: Build, tag, and push images to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: user-service
-          # This correctly uses the tag created in the previous step
           IMAGE_TAG: ${{ steps.tag_image.outputs.tag }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./user-service
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          # Build and push the user-service
+          echo "Building user-service..."
+          docker build -t $ECR_REGISTRY/user-service:$IMAGE_TAG ./user-service
+          docker push $ECR_REGISTRY/user-service:$IMAGE_TAG
 
-  # JOB 2: Runs Terraform to update the infrastructure
+          # Build and push the link-service
+          echo "Building link-service..."
+          docker build -t $ECR_REGISTRY/link-service:$IMAGE_TAG ./link-service
+          docker push $ECR_REGISTRY/link-service:$IMAGE_TAG
+      # =========================================================================
+
+
   deploy_infrastructure:
     name: Deploy Infrastructure with Terraform
     runs-on: ubuntu-latest
-    # The 'needs' keyword ensures this job waits for the image to be pushed
-    # and gives it access to the 'outputs' from the first job.
-    needs: build_and_push_image
+    needs: build_and_push_images # Depends on the newly named job
 
     steps:
       - name: Checkout code
@@ -77,11 +79,11 @@ jobs:
 
       - name: Terraform Apply
         env:
-          # This is the correct way to pass secrets to Terraform
           TF_VAR_db_password: ${{ secrets.TF_VAR_db_password }}
+          TF_VAR_link_db_password: ${{ secrets.TF_VAR_link_db_password }}
+          TF_VAR_jwt_secret_key: ${{ secrets.TF_VAR_jwt_secret_key }}
         run: |
-          # THIS IS THE KEY FIX:
-          # It gets the 'image_tag' output from the 'build_and_push_image' job
-          # and passes it DIRECTLY to Terraform, overriding the "latest" default.
-          terraform apply -auto-approve -var="image_tag=${{ needs.build_and_push_image.outputs.image_tag }}"
+          # This command does not need to change! Terraform already knows about both services.
+          # It receives the single unique tag and applies it to both task definitions.
+          terraform apply -auto-approve -var="image_tag=${{ needs.build_and_push_images.outputs.image_tag }}"
         working-directory: ./terraform

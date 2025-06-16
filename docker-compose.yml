@@ -31,14 +31,20 @@ services:
   # --- Application Services ---
   user-service:
     build: ./user-service
+    ports: # <-- ADD THIS SECTION
+      - "8001:8000" 
     environment:
       - DATABASE_URL=postgresql://user:password@user-db/user_db
+      - JWT_SECRET_KEY=710fc70a238cc61ae2abce051dcabeb6e4b4a6d8c085b2f51ed72dbb1a18c6a1
     depends_on: [user-db]
 
   link-service:
     build: ./link-service
+    ports: # <-- ADD THIS SECTION
+      - "8002:8000" 
     environment:
       - DATABASE_URL=postgresql://user:password@link-db/link_db
+      - JWT_SECRET_KEY=710fc70a238cc61ae2abce051dcabeb6e4b4a6d8c085b2f51ed72dbb1a18c6a1
     depends_on: [link-db]
   
   redirect-service:
