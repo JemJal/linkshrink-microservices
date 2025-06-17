@@ -10,31 +10,28 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, String
-# --- THIS IS THE FIXED LINE ---
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.ext.declarative import declarative_base # This was missing
-# -----------------------------
+from sqlalchemy.ext.declarative import declarative_base
 
 # ===============================================
-# ===         NEW CONFIGURATION SECTION         ===
+# ===             CONFIGURATION SECTION             ===
 # ===============================================
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
+DATABASE_URL = os.getenv("DATABASE_URL")
+# --- THIS IS THE CRITICAL ADDITION ---
+# We read the BASE_URL once here and use it everywhere.
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8080")
 
-if SECRET_KEY is None:
-    raise RuntimeError("JWT_SECRET_KEY environment variable is not set!")
+if not all([SECRET_KEY, DATABASE_URL]):
+    raise RuntimeError("Required environment variables (JWT_SECRET_KEY, DATABASE_URL) are not set!")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # ===============================================
-
-# --- Configuration ---
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-# --- Database Setup ---
-Base = declarative_base() # Now this line will work
-if DATABASE_URL is None:
-    raise RuntimeError("DATABASE_URL environment variable is not set!")
+# ===             DATABASE SETUP              ===
+# ===============================================
+Base = declarative_base()
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -47,7 +44,9 @@ class Link(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# Pydantic Schemas
+# ===============================================
+# ===            PYDANTIC SCHEMAS               ===
+# ===============================================
 class User(BaseModel):
     id: str
     email: str
@@ -59,7 +58,12 @@ class LinkResponse(BaseModel):
     short_url: str
     original_url: str
 
-# FastAPI Application
+class InternalLinkResponse(BaseModel):
+    original_url: str
+
+# ===============================================
+# ===         FASTAPI APP & DEPENDENCIES        ===
+# ===============================================
 app = FastAPI(title="Link Service")
 
 def get_db():
@@ -84,27 +88,21 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         return User(id=user_id, email=email)
     except JWTError:
         raise credentials_exception
-    
-class InternalLinkResponse(BaseModel):
-    original_url: str
 
-@app.get("/internal/links/{short_code}", response_model=InternalLinkResponse)
-def get_link_by_short_code(short_code: str, db: Session = Depends(get_db)):
-    """
-    Internal-only endpoint for the redirect-service to query for a link
-    on a cache miss. This endpoint is not exposed via the gateway.
-    """
-    link = db.query(Link).filter(Link.short_code == short_code).first()
-    
-    if not link:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
-        
-    return {"original_url": link.original_url}
-
+# ===============================================
+# ===              API ENDPOINTS                ===
+# ===============================================
 @app.get("/health", status_code=status.HTTP_200_OK)
 def health_check():
     return {"status": "ok"}
-    
+
+@app.get("/internal/links/{short_code}", response_model=InternalLinkResponse)
+def get_link_by_short_code(short_code: str, db: Session = Depends(get_db)):
+    link = db.query(Link).filter(Link.short_code == short_code).first()
+    if not link:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+    return {"original_url": link.original_url}
+
 @app.post("/links", response_model=LinkResponse, status_code=status.HTTP_201_CREATED)
 def create_link(
     link: LinkCreate,
@@ -112,7 +110,6 @@ def create_link(
     current_user: User = Depends(get_current_user)
 ):
     short_code = nanoid.generate(size=7)
-    
     new_link = Link(
         original_url=link.original_url, 
         short_code=short_code,
@@ -123,7 +120,8 @@ def create_link(
     db.commit()
     db.refresh(new_link)
     
-    return {"short_url": f"http://localhost:8080/{new_link.short_code}", "original_url": new_link.original_url}
+    # --- CORRECTED ---
+    return {"short_url": f"{BASE_URL}/r/{new_link.short_code}", "original_url": new_link.original_url}
 
 @app.get("/links", response_model=list[LinkResponse])
 def get_user_links(
@@ -132,9 +130,10 @@ def get_user_links(
 ):
     user_links = db.query(Link).filter(Link.user_id == current_user.id).all()
     
+    # --- CORRECTED ---
     return [
         {
-            "short_url": f"http://localhost:8080/{link.short_code}",
+            "short_url": f"{BASE_URL}/r/{link.short_code}",
             "original_url": link.original_url
         }
         for link in user_links
