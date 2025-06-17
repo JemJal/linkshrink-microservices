@@ -8,7 +8,7 @@ on:
       - main
 
 jobs:
-  build_and_push_images: # Renamed for clarity
+  build_and_push_images:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
 
@@ -34,30 +34,41 @@ jobs:
         id: tag_image
         run: echo "tag=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      # =========================================================================
-      # === THIS IS THE UPDATED STEP ===
-      # =========================================================================
       - name: Build, tag, and push images to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.tag_image.outputs.tag }}
         run: |
-          # Build and push the user-service
+          # This multi-line script now builds and pushes an image for each service
+          # in our application. They will all share the same unique image tag
+          # from the Git commit hash, ensuring version consistency across the deployment.
+
           echo "Building user-service..."
           docker build -t $ECR_REGISTRY/user-service:$IMAGE_TAG ./user-service
           docker push $ECR_REGISTRY/user-service:$IMAGE_TAG
 
-          # Build and push the link-service
           echo "Building link-service..."
           docker build -t $ECR_REGISTRY/link-service:$IMAGE_TAG ./link-service
           docker push $ECR_REGISTRY/link-service:$IMAGE_TAG
-      # =========================================================================
-
+          
+          # ==========================================================
+          # === NEWLY ADDED: Build step for the redirect-service ===
+          # ==========================================================
+          echo "Building redirect-service..."
+          docker build -t $ECR_REGISTRY/redirect-service:$IMAGE_TAG ./redirect-service
+          docker push $ECR_REGISTRY/redirect-service:$IMAGE_TAG
+          
+          # =================================================================
+          # === Pre-emptive addition for the final analytics-service      ===
+          # =================================================================
+          echo "Building analytics-service..."
+          docker build -t $ECR_REGISTRY/analytics-service:$IMAGE_TAG ./analytics-service
+          docker push $ECR_REGISTRY/analytics-service:$IMAGE_TAG
 
   deploy_infrastructure:
     name: Deploy Infrastructure with Terraform
     runs-on: ubuntu-latest
-    needs: build_and_push_images # Depends on the newly named job
+    needs: build_and_push_images
 
     steps:
       - name: Checkout code
@@ -84,7 +95,5 @@ jobs:
           TF_VAR_jwt_secret_key: ${{ secrets.TF_VAR_jwt_secret_key }}
           TF_VAR_mq_password: ${{ secrets.TF_VAR_mq_password }}
         run: |
-          # This command does not need to change! Terraform already knows about both services.
-          # It receives the single unique tag and applies it to both task definitions.
           terraform apply -auto-approve -var="image_tag=${{ needs.build_and_push_images.outputs.image_tag }}"
         working-directory: ./terraform
