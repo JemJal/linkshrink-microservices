@@ -28,3 +28,9 @@ variable "jwt_secret_key" {
   type        = string
   sensitive   = true
 }
+
+variable "mq_password" {
+  description = "The password for the RabbitMQ admin user."
+  type        = string
+  sensitive   = true
+}
