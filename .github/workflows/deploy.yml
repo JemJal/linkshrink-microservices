@@ -14,10 +14,49 @@ env:
   AWS_REGION: eu-north-1
 
 jobs:
+  # ====================================================================
+  # === JOB 1: Create ECR Repositories First (The Fix)
+  # ====================================================================
+  create_ecr_repos:
+    name: Create ECR Repositories
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./terraform
+
+      - name: Terraform Apply (ECR Repos Only)
+        run: |
+          terraform apply -auto-approve \
+            -target=aws_ecr_repository.user_service \
+            -target=aws_ecr_repository.link_service \
+            -target=aws_ecr_repository.redirect_service \
+            -target=aws_ecr_repository.analytics_service \
+            -target=aws_ecr_repository.web_gui_service
+        working-directory: ./terraform
+
+  # ====================================================================
+  # === JOB 2: Build and Push Images
+  # ====================================================================
   build_and_push_images:
     name: Build and Push All Docker Images
     runs-on: ubuntu-latest
-    # This job will output the image tag to be used by the deploy job
+    # This job will only start after the ECR repos are created
+    needs: create_ecr_repos
     outputs:
       image_tag: ${{ steps.tag_image.outputs.tag }}
 
@@ -35,32 +74,31 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-
+      
       - name: Set image tag from Git commit hash
         id: tag_image
         run: echo "tag=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Build, tag, and push all images to Amazon ECR
+      - name: Build, tag, and push all images
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.tag_image.outputs.tag }}
         run: |
-          # The service names must match their directory names
           SERVICES=("user-service" "link-service" "redirect-service" "analytics-service" "web-gui")
-
           for SERVICE in "${SERVICES[@]}"
           do
             echo "--- Building and Pushing $SERVICE ---"
-            
-            # This is the robust build command we perfected locally
             docker build -t $ECR_REGISTRY/$SERVICE:$IMAGE_TAG -f $SERVICE/Dockerfile $SERVICE
             docker push $ECR_REGISTRY/$SERVICE:$IMAGE_TAG
           done
 
-  deploy_infrastructure:
-    name: Deploy Infrastructure with Terraform
+  # ====================================================================
+  # === JOB 3: Deploy the Rest of the Infrastructure
+  # ====================================================================
+  deploy_services:
+    name: Deploy ECS Services and Infrastructure
     runs-on: ubuntu-latest
-    # This job will only run if the build_and_push_images job succeeds
+    # This job only starts after the images have been successfully pushed
     needs: build_and_push_images
 
     steps:
@@ -78,20 +116,15 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
-        id: init
         run: terraform init
         working-directory: ./terraform
 
-      - name: Terraform Apply
-        id: apply
+      - name: Terraform Apply (All Remaining Resources)
         env:
-          # This maps your GitHub secrets to the environment variables Terraform needs.
-          # IMPORTANT: Make sure your GitHub secrets are named DB_PASSWORD, JWT_SECRET_KEY, etc.
           TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
           TF_VAR_link_db_password: ${{ secrets.LINK_DB_PASSWORD }}
           TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
           TF_VAR_mq_password: ${{ secrets.MQ_PASSWORD }}
         run: |
-          # We get the image tag from the output of the previous 'build' job
           terraform apply -auto-approve -var="image_tag=${{ needs.build_and_push_images.outputs.image_tag }}"
         working-directory: ./terraform
