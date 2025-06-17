@@ -82,6 +82,7 @@ jobs:
           TF_VAR_db_password: ${{ secrets.TF_VAR_db_password }}
           TF_VAR_link_db_password: ${{ secrets.TF_VAR_link_db_password }}
           TF_VAR_jwt_secret_key: ${{ secrets.TF_VAR_jwt_secret_key }}
+          TF_VAR_mq_password: ${{ secrets.TF_VAR_mq_password }}
         run: |
           # This command does not need to change! Terraform already knows about both services.
           # It receives the single unique tag and applies it to both task definitions.
