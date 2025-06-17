@@ -147,3 +147,5 @@ def perform_redirect(short_code: str):
             # The link was not found in the cache OR the main database. It doesn't exist.
             logging.error(f"Short code '{short_code}' not found in cache or API.")
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+        
+        # Trigger pipeline
