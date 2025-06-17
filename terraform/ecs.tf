@@ -35,11 +35,10 @@ resource "aws_lb_listener" "http" {
 
 # --- Listener Rules: The heart of our API Gateway ---
 
-# This rule forwards traffic for /users and /token to the user-service.
-# It has the highest priority (100).
+# Listener RULE for the user-service.
 resource "aws_lb_listener_rule" "user_service" {
   listener_arn = aws_lb_listener.http.arn
-  priority     = 100
+  priority     = 100 # Highest priority
 
   action {
     type             = "forward"
@@ -49,12 +48,13 @@ resource "aws_lb_listener_rule" "user_service" {
   condition {
     path_pattern {
       # Using specific paths without wildcards is more robust.
+      # This will match POST /users and POST /token Exactly.
       values = ["/users", "/token"]
     }
   }
 }
 
-# This rule forwards traffic for /links to the link-service.
+# Listener RULE for the link-service.
 resource "aws_lb_listener_rule" "link_service" {
   listener_arn = aws_lb_listener.http.arn
   priority     = 90
@@ -66,7 +66,27 @@ resource "aws_lb_listener_rule" "link_service" {
 
   condition {
     path_pattern {
+      # This will now match POST /links. If you add GET /links/{id} later,
+      # you would change this back to "/links*"
       values = ["/links"]
+    }
+  }
+}
+
+# Listener RULE for the redirect-service (our catch-all).
+# This remains the same, correctly using the wildcard.
+resource "aws_lb_listener_rule" "redirect_service" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 80 # Lowest priority
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.redirect_service.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/*"]
     }
   }
 }
