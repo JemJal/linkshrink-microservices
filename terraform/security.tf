@@ -24,12 +24,28 @@ resource "aws_security_group" "ecs_service_sg" {
   name        = "linkshrink-ecs-service-sg"
   description = "Allows traffic from ALB to the ECS tasks"
   vpc_id      = aws_vpc.main.id
+
+  # This is your EXISTING rule for all the Python backend services
   ingress {
+    description     = "Allow traffic from ALB on port 8000 for backend services"
     protocol        = "tcp"
     from_port       = 8000
     to_port         = 8000
     security_groups = [aws_security_group.alb_sg.id]
   }
+
+  # --- THIS IS THE NEW RULE YOU ARE ADDING ---
+  # It allows the ALB health check and user traffic to reach the Nginx frontend container on port 80.
+  ingress {
+    description     = "Allow traffic from ALB on port 80 for frontend service"
+    protocol        = "tcp"
+    from_port       = 80
+    to_port         = 80
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+  # -------------------------------------------
+
+  # This is your EXISTING rule for VPC Endpoints
   ingress {
     description = "Allow members to talk to each other (for VPC Endpoints)"
     protocol    = "tcp"
@@ -37,6 +53,7 @@ resource "aws_security_group" "ecs_service_sg" {
     to_port     = 443
     self        = true
   }
+  
   egress {
     protocol    = "-1"
     from_port   = 0
