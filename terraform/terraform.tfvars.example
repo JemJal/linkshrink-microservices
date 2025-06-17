@@ -1,0 +1,15 @@
+# This is an example file. To deploy from your local machine,
+# copy this file to "terraform.tfvars" and replace the placeholder
+# values with your actual secrets.
+#
+# DO NOT COMMIT THE 'terraform.tfvars' FILE TO GIT.
+
+aws_region = "eu-north-1"
+
+db_password = "<YOUR_STRONG_PASSWORD_FOR_USER_DB>"
+
+link_db_password = "<YOUR_STRONG_PASSWORD_FOR_LINK_DB>"
+
+jwt_secret_key = "<YOUR_LONG_RANDOM_JWT_SECRET_STRING>"
+
+mq_password = "<A_VERY_SECURE_PASSWORD_FOR_RABBITMQ>"
