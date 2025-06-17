@@ -1,0 +1,24 @@
+# Git
+.git
+.gitignore
+
+# Terraform
+.terraform
+.terraform.lock.hcl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Docker
+Dockerfile
+
+# IDE
+.vscode/
+.idea/
