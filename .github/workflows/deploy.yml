@@ -35,10 +35,12 @@ jobs:
         working-directory: ./terraform
       - name: Terraform Apply (ECR Repos Only)
         env:
-          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-          TF_VAR_link_db_password: ${{ secrets.LINK_DB_PASSWORD }}
-          TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
-          TF_VAR_mq_password: ${{ secrets.MQ_PASSWORD }}
+          # --- THIS IS THE FIX ---
+          # We are now using the full, correct secret names from your repository.
+          TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+          TF_VAR_link_db_password: ${{ secrets.TF_VAR_LINK_DB_PASSWORD }}
+          TF_VAR_jwt_secret_key: ${{ secrets.TF_VAR_JWT_SECRET_KEY }}
+          TF_VAR_mq_password: ${{ secrets.TF_VAR_MQ_PASSWORD }}
         run: |
           terraform apply -auto-approve \
             -target=aws_ecr_repository.user_service \
@@ -114,11 +116,12 @@ jobs:
         working-directory: ./terraform
       - name: Terraform Apply (All Remaining Resources)
         env:
-          # --- THIS IS THE CORRECTED BLOCK ---
-          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-          TF_VAR_link_db_password: ${{ secrets.LINK_DB_PASSWORD }}
-          TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }} # No more double underscore
-          TF_VAR_mq_password: ${{ secrets.MQ_PASSWORD }}
+          # --- THIS IS THE SECOND FIX ---
+          # Using the full, correct secret names here as well.
+          TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+          TF_VAR_link_db_password: ${{ secrets.TF_VAR_LINK_DB_PASSWORD }}
+          TF_VAR_jwt_secret_key: ${{ secrets.TF_VAR_JWT_SECRET_KEY }}
+          TF_VAR_mq_password: ${{ secrets.TF_VAR_MQ_PASSWORD }}
         run: |
           terraform apply -auto-approve -var="image_tag=${{ needs.build_and_push_images.outputs.image_tag }}"
         working-directory: ./terraform

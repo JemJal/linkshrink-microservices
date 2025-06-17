@@ -37,45 +37,45 @@ The system is composed of five distinct microservices and a suite of managed AWS
 
 ```mermaid
 graph TD
-    subgraph User's Browser
-        A[Web GUI]
+    subgraph "User's Browser"
+        A["Web GUI"]
     end
 
-    subgraph AWS Cloud
-        subgraph "Application Load Balancer (ALB)"
-            B(Listener Rules)
+    subgraph "AWS Cloud"
+        subgraph "Application Load Balancer"
+            B("Listener Rules")
         end
 
-        subgraph "ECS Services (Fargate)"
-            C[Web GUI Service (Nginx)]
-            D[User Service (FastAPI)]
-            E[Link Service (FastAPI)]
-            F[Redirect Service (FastAPI)]
-            G[Analytics Service (Python)]
+        subgraph "ECS Services on Fargate"
+            C["Web GUI Service"]
+            D["User Service"]
+            E["Link Service"]
+            F["Redirect Service"]
+            G["Analytics Service"]
         end
 
         subgraph "Data Stores"
-            H[User DB (RDS Postgres)]
-            I[Link DB (RDS Postgres)]
-            J[Redirect Cache (ElastiCache Redis)]
-            K[Message Queue (Amazon MQ RabbitMQ)]
+            H["User DB - Postgres"]
+            I["Link DB - Postgres"]
+            J["Redirect Cache - Redis"]
+            K["Message Queue - RabbitMQ"]
         end
     end
 
-    A -- HTTP/HTTPS --> B
+    A -- "Requests" --> B
 
-    B -- /users*, /token* ---> D
-    B -- /links* ---> E
-    B -- /r/* ---> F
-    B -- Default (/) ---> C
+    B -- "API: /users or /token" --> D
+    B -- "API: /links" --> E
+    B -- "Redirects: /r/:shortcode" --> F
+    B -- "Default Route for GUI" --> C
 
-    D --> H
-    E --> I
-    E --> J
-    F -- Cache Miss --> E
-    F -- Cache Hit --> J
-    F -- Click Event --> K
-    G -- Consumes Events <-- K
+    D -- "Reads/Writes" --> H
+    E -- "Reads/Writes" --> I
+    E -- "Writes to Cache" --> J
+    F -- "Cache Miss" --> E
+    F -- "Cache Hit" --> J
+    F -- "Publishes Click Event" --> K
+    G -- "Consumes Events" --> K
 ```
 
 ## File & Directory Structure
@@ -97,7 +97,7 @@ This is a breakdown of all important files and directories in the project.
     -   `database.tf`: Defines the two RDS PostgreSQL database instances.
     -   `dependencies.tf`: Defines dependencies like Redis and RabbitMQ.
     -   `ecr.tf`: Defines the five ECR container registries for our Docker images.
-    -   `ecs.tf`: Defines all ECS services, tasks, and the Application Load Balancer rules.
+    -   `ecs.tf`: Defines all ECS services-tasks, and the Application Load Balancer rules.
     -   `network.tf`: Defines the VPC, subnets, and routing for our cloud network.
     -   `outputs.tf`: Specifies what information to output after deployment (e.g., the website URL).
     -   `provider.tf`: Configures the AWS provider for Terraform.
@@ -156,14 +156,16 @@ The GitHub Actions workflow requires access to sensitive information. You must s
 2.  Go to **Settings** > **Secrets and variables** > **Actions**.
 3.  Click **New repository secret** for each of the following:
 
-| Secret Name           | Description                                       | Example Value                   |
-| --------------------- | ------------------------------------------------- | ------------------------------- |
-| `AWS_ACCESS_KEY_ID`   | Your IAM user's Access Key ID.                    | `AKIAIOSFODNN7EXAMPLE`          |
-| `AWS_SECRET_ACCESS_KEY` | Your IAM user's Secret Access Key.                | `wJalrXUtnFEMI...`              |
-| `DB_PASSWORD`         | A strong password for the `user-db` database.     | `my-strong-password-123`        |
-| `LINK_DB_PASSWORD`    | A strong password for the `link-db` database.     | `another-secure-password-456`   |
-| `JWT_SECRET_KEY`      | A long, random string for signing JWTs.           | `5f4dcc3b5aa765d61d8...`      |
-| `MQ_PASSWORD`         | A strong password for the RabbitMQ user.          | `my-mq-password-789`            |
+| Secret Name                   | Description                                       | Example Value                   |
+| ----------------------------- | ------------------------------------------------- | ------------------------------- |
+| `AWS_ACCESS_KEY_ID`           | Your IAM user's Access Key ID.                    | `AKIAIOSFODNN7EXAMPLE`          |
+| `AWS_SECRET_ACCESS_KEY`       | Your IAM user's Secret Access Key.                | `wJalrXUtnFEMI...`              |
+| `TF_VAR_DB_PASSWORD`          | A strong password for the `user-db` database.     | `my-strong-password-123`        |
+| `TF_VAR_LINK_DB_PASSWORD`     | A strong password for the `link-db` database.     | `another-secure-password-456`   |
+| `TF_VAR_JWT_SECRET_KEY`       | A long, random string for signing JWTs.           | `5f4dcc3b5aa765d61d8...`      |
+| `TF_VAR_MQ_PASSWORD`          | A strong password for the RabbitMQ user.          | `a-very-secure-mq-password`     |
+
+*Note: The `TF_VAR_` prefix is important, as it allows Terraform to automatically recognize these as input variables.*
 
 ### Step 3: The Automated Deployment
 
@@ -200,7 +202,6 @@ To avoid ongoing AWS costs, you can easily tear down the entire infrastructure w
 -   **Three-Phase Deployment:** The CI/CD pipeline is explicitly split into three jobs (Create Repos, Build Images, Deploy Services) to correctly handle infrastructure dependencies. You cannot push an image to a repository that doesn't exist.
 -   **Immutable Image Tags:** ECR repositories are configured to be immutable. A specific tag (like a Git commit hash) can never be overwritten, ensuring deployment integrity and preventing accidental changes.
 -   **Git Commit as Source of Truth:** The short Git commit hash is used as the Docker image tag. This creates a direct, auditable link between a specific version of the code in Git and the exact container running in production.
-
 
 ## Future Improvements
 
