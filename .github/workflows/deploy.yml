@@ -6,16 +6,14 @@ on:
   push:
     branches:
       - main
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# Define your AWS region once for all jobs
 env:
   AWS_REGION: eu-north-1
 
 jobs:
   # ====================================================================
-  # === JOB 1: Create ECR Repositories First (The Fix)
+  # === JOB 1: Create ECR Repositories First
   # ====================================================================
   create_ecr_repos:
     name: Create ECR Repositories
@@ -40,6 +38,14 @@ jobs:
         working-directory: ./terraform
 
       - name: Terraform Apply (ECR Repos Only)
+        # --- THIS IS THE FIX ---
+        # We provide all the secrets here to prevent Terraform from prompting for them,
+        # even though this specific command doesn't use them.
+        env:
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+          TF_VAR_link_db_password: ${{ secrets.LINK_DB_PASSWORD }}
+          TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+          TF_VAR_mq_password: ${{ secrets.MQ_PASSWORD }}
         run: |
           terraform apply -auto-approve \
             -target=aws_ecr_repository.user_service \
@@ -55,7 +61,6 @@ jobs:
   build_and_push_images:
     name: Build and Push All Docker Images
     runs-on: ubuntu-latest
-    # This job will only start after the ECR repos are created
     needs: create_ecr_repos
     outputs:
       image_tag: ${{ steps.tag_image.outputs.tag }}
@@ -63,22 +68,18 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-      
       - name: Set image tag from Git commit hash
         id: tag_image
         run: echo "tag=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
       - name: Build, tag, and push all images
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -98,27 +99,22 @@ jobs:
   deploy_services:
     name: Deploy ECS Services and Infrastructure
     runs-on: ubuntu-latest
-    # This job only starts after the images have been successfully pushed
     needs: build_and_push_images
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-
       - name: Terraform Init
         run: terraform init
         working-directory: ./terraform
-
       - name: Terraform Apply (All Remaining Resources)
         env:
           TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
