@@ -84,6 +84,22 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         return User(id=user_id, email=email)
     except JWTError:
         raise credentials_exception
+    
+class InternalLinkResponse(BaseModel):
+    original_url: str
+
+@app.get("/internal/links/{short_code}", response_model=InternalLinkResponse)
+def get_link_by_short_code(short_code: str, db: Session = Depends(get_db)):
+    """
+    Internal-only endpoint for the redirect-service to query for a link
+    on a cache miss. This endpoint is not exposed via the gateway.
+    """
+    link = db.query(Link).filter(Link.short_code == short_code).first()
+    
+    if not link:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+        
+    return {"original_url": link.original_url}
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 def health_check():

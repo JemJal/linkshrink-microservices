@@ -21,7 +21,7 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
 MQ_USERNAME = os.getenv("MQ_USERNAME", "guest")
 MQ_PASSWORD = os.getenv("MQ_PASSWORD", "guest")
-LINK_SERVICE_URL = os.getenv("LINK_SERVICE_URL", "http://link-service:8000")
+LINK_SERVICE_URL = os.getenv("LINK_SERVICE_URL", "")
 
 logging.basicConfig(level=logging.INFO)
 app = FastAPI(title="Redirect Service")

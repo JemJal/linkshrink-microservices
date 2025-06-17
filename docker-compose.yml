@@ -31,8 +31,7 @@ services:
   # --- Application Services ---
   user-service:
     build: ./user-service
-    ports: # <-- ADD THIS SECTION
-      - "8001:8000" 
+    # REMOVED: The 'ports' section was removed. Only Nginx should be exposed.
     environment:
       - DATABASE_URL=postgresql://user:password@user-db/user_db
       - JWT_SECRET_KEY=710fc70a238cc61ae2abce051dcabeb6e4b4a6d8c085b2f51ed72dbb1a18c6a1
@@ -40,8 +39,7 @@ services:
 
   link-service:
     build: ./link-service
-    ports: # <-- ADD THIS SECTION
-      - "8002:8000" 
+    # REMOVED: The 'ports' section was removed.
     environment:
       - DATABASE_URL=postgresql://user:password@link-db/link_db
       - JWT_SECRET_KEY=710fc70a238cc61ae2abce051dcabeb6e4b4a6d8c085b2f51ed72dbb1a18c6a1
@@ -65,6 +63,7 @@ services:
     image: nginx:1.21-alpine
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro # Mount config read-only
+      - ./web-gui/static:/usr/share/nginx/html:ro
     ports:
       # This is the single public entry point for our app
       - "8080:80" 

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinkShrink - Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header>
+            <h1>Dashboard</h1>
+            <button id="logout-button">Logout</button>
+        </header>
+
+        <div id="message-area"></div>
+
+        <div class="-section">
+            <h2>Create New Link</h2>
+            <form id="create-link-form">
+                <input type="url" id="original-url" placeholder="https://your-long-url.com" required>
+                <button type="submit">Shrink It!</button>
+            </form>
+        </div>
+
+        <div class="link-section">
+            <h2>Your Links</h2>
+            <ul id="link-list">
+                <!-- Links will be dynamically inserted here -->
+            </ul>
+        </div>
+    </div>
+    <script src="dashboard.js"></script>
+</body>
+</html>

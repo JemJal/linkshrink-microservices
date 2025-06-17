@@ -47,9 +47,8 @@ resource "aws_lb_listener_rule" "user_service" {
 
   condition {
     path_pattern {
-      # Using specific paths without wildcards is more robust.
-      # This will match POST /users and POST /token Exactly.
-      values = ["/users", "/token"]
+      # FIXED: Added wildcard (*) to match /users, /users/, /users/123, etc.
+      values = ["/users*", "/token*"]
     }
   }
 }
@@ -66,9 +65,8 @@ resource "aws_lb_listener_rule" "link_service" {
 
   condition {
     path_pattern {
-      # This will now match POST /links. If you add GET /links/{id} later,
-      # you would change this back to "/links*"
-      values = ["/links"]
+      # FIXED: Added wildcard to make this robust as well.
+      values = ["/links*"]
     }
   }
 }
