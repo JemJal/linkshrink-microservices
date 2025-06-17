@@ -110,6 +110,25 @@ resource "aws_lb_listener_rule" "link_service" {
   }
 }
 
+# --- THIS IS THE ONE AND ONLY CHANGE TO THE FILE ---
+# This new rule handles the internal API call from the redirect-service to the link-service.
+resource "aws_lb_listener_rule" "internal_api" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 95 # A priority between the /links and /r rules
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.link_service.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/internal/links*"]
+    }
+  }
+}
+# ----------------------------------------------------
+
 resource "aws_lb_listener_rule" "redirect_service" {
   listener_arn = aws_lb_listener.http.arn
   priority     = 80
