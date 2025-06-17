@@ -8,13 +8,12 @@ on:
       - main
 
 jobs:
+  # New one ->
   build_and_push_images:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
-
     outputs:
       image_tag: ${{ steps.tag_image.outputs.tag }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -39,10 +38,6 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.tag_image.outputs.tag }}
         run: |
-          # This multi-line script now builds and pushes an image for each service
-          # in our application. They will all share the same unique image tag
-          # from the Git commit hash, ensuring version consistency across the deployment.
-
           echo "Building user-service..."
           docker build -t $ECR_REGISTRY/user-service:$IMAGE_TAG ./user-service
           docker push $ECR_REGISTRY/user-service:$IMAGE_TAG
@@ -51,19 +46,13 @@ jobs:
           docker build -t $ECR_REGISTRY/link-service:$IMAGE_TAG ./link-service
           docker push $ECR_REGISTRY/link-service:$IMAGE_TAG
           
-          # ==========================================================
-          # === NEWLY ADDED: Build step for the redirect-service ===
-          # ==========================================================
+          # ========================================================
+          # === THIS IS THE FIX - ADDING THE REDIRECT-SERVICE
+          # ========================================================
           echo "Building redirect-service..."
           docker build -t $ECR_REGISTRY/redirect-service:$IMAGE_TAG ./redirect-service
           docker push $ECR_REGISTRY/redirect-service:$IMAGE_TAG
-          
-          # =================================================================
-          # === Pre-emptive addition for the final analytics-service      ===
-          # =================================================================
-          echo "Building analytics-service..."
-          docker build -t $ECR_REGISTRY/analytics-service:$IMAGE_TAG ./analytics-service
-          docker push $ECR_REGISTRY/analytics-service:$IMAGE_TAG
+
 
   deploy_infrastructure:
     name: Deploy Infrastructure with Terraform
