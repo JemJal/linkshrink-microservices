@@ -35,6 +35,19 @@ resource "aws_lb_target_group" "link_service" {
   }
 }
 
+# A NEW Target Group specifically for the redirect-service.
+resource "aws_lb_target_group" "redirect_service" {
+  name        = "redirect-service-tg"
+  port        = 8000
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+  health_check {
+	# This service will also need a /health endpoint in its code.
+	path = "/health"
+  }
+}
+
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
@@ -74,6 +87,24 @@ resource "aws_lb_listener_rule" "link_service" {
     path_pattern {
       values = ["/links*"]
     }
+  }
+}
+
+# Listener RULE for the redirect-service (our catch-all).
+resource "aws_lb_listener_rule" "redirect_service" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 80 # Lowest priority, so it's evaluated last.
+
+  action {
+	type             = "forward"
+	target_group_arn = aws_lb_target_group.redirect_service.arn
+  }
+
+  condition {
+	path_pattern {
+	  # The "*" wildcard matches any path.
+	  values = ["/*"]
+	}
   }
 }
 
@@ -156,6 +187,52 @@ resource "aws_ecs_task_definition" "link_service" {
   }])
 }
 
+# A NEW Task Definition for the redirect-service.
+resource "aws_ecs_task_definition" "redirect_service" {
+  family                   = "redirect-service-task"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = 256
+  memory                   = 512
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+
+  container_definitions = jsonencode([{
+	name  = "redirect-service"
+	image = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/redirect-service:${var.image_tag}"
+	portMappings = [{ containerPort = 8000 }]
+	environment = [
+	  {
+		# This passes the Redis endpoint to the container.
+		name  = "REDIS_HOST"
+		value = aws_elasticache_cluster.redis.cache_nodes[0].address
+	  },
+	  {
+		# This passes the RabbitMQ endpoint to the container.
+		name  = "RABBITMQ_HOST"
+		# We reference the private IP of the broker's network interface.
+		value = aws_mq_broker.rabbitmq.instances[0].ip_address
+	  },
+	  # We will also need to pass the MQ username and password.
+	  {
+		name = "MQ_USERNAME"
+		value = "mqadmin"
+	  },
+	  {
+		name = "MQ_PASSWORD"
+		value = var.mq_password
+	  }
+	]
+	logConfiguration = {
+	  logDriver = "awslogs"
+	  options = {
+		"awslogs-group"         = aws_cloudwatch_log_group.redirect_service_logs.name
+		"awslogs-region"        = var.aws_region
+		"awslogs-stream-prefix" = "ecs"
+	  }
+	}
+  }])
+}
+
 # --- Service, IAM, and Logging Resources ---
 
 resource "aws_ecs_service" "user_service" {
@@ -223,4 +300,30 @@ resource "aws_cloudwatch_log_group" "user_service_logs" {
 resource "aws_cloudwatch_log_group" "link_service_logs" {
   name              = "/ecs/link-service"
   retention_in_days = 7
+}
+
+resource "aws_cloudwatch_log_group" "redirect_service_logs" {
+  name              = "/ecs/redirect-service"
+  retention_in_days = 7
+}
+
+# ... existing user-service and link-service services ...
+
+# A NEW Service to run and manage the redirect-service task.
+resource "aws_ecs_service" "redirect_service" {
+  name            = "redirect-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.redirect_service.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+  network_configuration {
+	subnets         = aws_subnet.private[*].id
+	security_groups = [aws_security_group.ecs_service_sg.id]
+  }
+  load_balancer {
+	target_group_arn = aws_lb_target_group.redirect_service.arn
+	container_name   = "redirect-service"
+	container_port   = 8000
+  }
+  depends_on = [aws_lb_listener_rule.redirect_service] # Depends on its specific rule
 }
