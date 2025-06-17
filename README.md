@@ -201,6 +201,7 @@ To avoid ongoing AWS costs, you can easily tear down the entire infrastructure w
 -   **Immutable Image Tags:** ECR repositories are configured to be immutable. A specific tag (like a Git commit hash) can never be overwritten, ensuring deployment integrity and preventing accidental changes.
 -   **Git Commit as Source of Truth:** The short Git commit hash is used as the Docker image tag. This creates a direct, auditable link between a specific version of the code in Git and the exact container running in production.
 
+
 ## Future Improvements
 
 -   **Add HTTPS:** Implement an ACM certificate and update the ALB listener to use HTTPS on port 443 for secure traffic.
