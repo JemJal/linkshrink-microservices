@@ -5,7 +5,7 @@ import json
 import logging
 from datetime import datetime, timezone
 import ssl
-from typing import Union # <-- IMPORT 'Union' FOR OLDER PYTHON COMPATIBILITY
+from typing import Union
 
 import pika
 import redis
@@ -73,13 +73,10 @@ def publish_click_event(short_code: str):
     except Exception as e:
         logging.error(f"Could not publish click event to RabbitMQ: {e}")
 
-# --- THIS IS THE CORRECTED FUNCTION SIGNATURE ---
 def get_link_from_api(short_code: str) -> Union[str, None]:
-# -----------------------------------------------
     """
     Called on a cache miss. Makes an internal API call to the link-service.
     """
-    # NOTE: In the next topic, we will create this internal endpoint.
     api_url = f"{LINK_SERVICE_URL}/internal/links/{short_code}"
     logging.info(f"Querying internal API: {api_url}")
     try:
@@ -104,10 +101,12 @@ def health_check():
     """Simple health check for the Application Load Balancer."""
     return {"status": "ok", "redis_connected": redis_client is not None}
 
-@app.get("/{short_code}")
+# --- THIS IS THE ONE AND ONLY CHANGE ---
+@app.get("/r/{short_code}")
 def perform_redirect(short_code: str):
     """
     Core redirect endpoint using the read-through cache pattern.
+    This now matches the /r/* route from the ALB.
     """
     logging.info(f"Redirect request received for short_code: {short_code}")
 
