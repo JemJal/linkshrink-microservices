@@ -74,28 +74,11 @@ resource "aws_lb_listener_rule" "link_service" {
 }
 
 # Listener RULE for the redirect-service (our catch-all).
-# This remains the same, correctly using the wildcard.
-resource "aws_lb_listener_rule" "redirect_service" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 80 # Lowest priority
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.redirect_service.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/*"]
-    }
-  }
-}
-
 # This is our catch-all rule with the lowest priority. All other traffic
 # (e.g., short link redirects) will be sent to the redirect-service.
 resource "aws_lb_listener_rule" "redirect_service" {
   listener_arn = aws_lb_listener.http.arn
-  priority     = 80
+  priority     = 80 # Lowest priority
 
   action {
     type             = "forward"
