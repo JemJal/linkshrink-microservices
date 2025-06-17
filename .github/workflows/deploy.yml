@@ -22,25 +22,18 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-
       - name: Terraform Init
         run: terraform init
         working-directory: ./terraform
-
       - name: Terraform Apply (ECR Repos Only)
-        # --- THIS IS THE FIX ---
-        # We provide all the secrets here to prevent Terraform from prompting for them,
-        # even though this specific command doesn't use them.
         env:
           TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
           TF_VAR_link_db_password: ${{ secrets.LINK_DB_PASSWORD }}
@@ -85,13 +78,23 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.tag_image.outputs.tag }}
         run: |
-          SERVICES=("user-service" "link-service" "redirect-service" "analytics-service" "web-gui")
-          for SERVICE in "${SERVICES[@]}"
+          # The service names must match their directory names for the build command,
+          # but the repository name for push. We'll adjust the push command.
+          SERVICES=("user-service" "link-service" "redirect-service" "analytics-service" "web-gui-service") # <-- THE FIX
+          
+          # We need to handle the web-gui separately as its directory name is different
+          BACKEND_SERVICES=("user-service" "link-service" "redirect-service" "analytics-service")
+          for SERVICE in "${BACKEND_SERVICES[@]}"
           do
             echo "--- Building and Pushing $SERVICE ---"
             docker build -t $ECR_REGISTRY/$SERVICE:$IMAGE_TAG -f $SERVICE/Dockerfile $SERVICE
             docker push $ECR_REGISTRY/$SERVICE:$IMAGE_TAG
           done
+
+          echo "--- Building and Pushing web-gui-service ---"
+          # Build from the 'web-gui' directory but tag it with the correct repository name 'web-gui-service'
+          docker build -t $ECR_REGISTRY/web-gui-service:$IMAGE_TAG -f web-gui/Dockerfile web-gui
+          docker push $ECR_REGISTRY/web-gui-service:$IMAGE_TAG
 
   # ====================================================================
   # === JOB 3: Deploy the Rest of the Infrastructure
@@ -119,7 +122,7 @@ jobs:
         env:
           TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
           TF_VAR_link_db_password: ${{ secrets.LINK_DB_PASSWORD }}
-          TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+          TF__jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
           TF_VAR_mq_password: ${{ secrets.MQ_PASSWORD }}
         run: |
           terraform apply -auto-approve -var="image_tag=${{ needs.build_and_push_images.outputs.image_tag }}"
