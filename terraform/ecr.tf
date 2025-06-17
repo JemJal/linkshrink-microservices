@@ -1,26 +1,53 @@
 # terraform/ecr.tf
 
-# ECR Repository for the user-service
+# ECR Repositories for all our application services, configured with production best practices.
+
 resource "aws_ecr_repository" "user_service" {
-  name = "user-service"
-  force_delete = true
+  name                 = "user-service"
+  image_tag_mutability = "IMMUTABLE" # Prevents overwriting tags
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true # Scans for vulnerabilities
+  }
 }
 
 resource "aws_ecr_repository" "link_service" {
-  name         = "link-service"
-  force_delete = true
+  name                 = "link-service"
+  image_tag_mutability = "IMMUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
 }
 
 resource "aws_ecr_repository" "redirect_service" {
-  name         = "redirect-service"
-  force_delete = true
+  name                 = "redirect-service"
+  image_tag_mutability = "IMMUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
 }
 
 resource "aws_ecr_repository" "analytics_service" {
-  name         = "analytics-service"
-  force_delete = true
+  name                 = "analytics-service"
+  image_tag_mutability = "IMMUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
 }
 
-# NOTE: force_delete is useful for development but should be
-#   removed or set to false in a production environment to
-#   prevent accidental deletion of important images.
+resource "aws_ecr_repository" "web_gui_service" {
+  name                 = "web-gui-service"
+  image_tag_mutability = "IMMUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
