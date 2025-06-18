@@ -1,8 +1,8 @@
-# LinkShrink: A Complete Microservices-Powered URL Shortener
+# LinkShrink Microservices
 
-LinkShrink is a fully-featured URL shortening application built on a modern microservices architecture. It provides user authentication, authenticated link creation and management, high-performance redirects, and asynchronous click analytics. The entire system is designed for automated deployment to AWS using Terraform and GitHub Actions.
+A fully-featured URL shortening application built on a modern microservices architecture. It provides user authentication, authenticated link creation and management, high-performance redirects, and asynchronous click analytics. The entire system is designed for automated, production-ready deployment to AWS using Terraform and GitHub Actions.
 
-This repository serves as a complete, production-ready blueprint for deploying a complex, multi-service application to the cloud.
+This repository serves as a complete, real-world blueprint for deploying a complex, multi-service application to the cloud.
 
 ## Table of Contents
 
@@ -11,39 +11,40 @@ This repository serves as a complete, production-ready blueprint for deploying a
 3.  [File & Directory Structure](#file--directory-structure)
 4.  [Getting Started: Local Development](#getting-started-local-development)
 5.  [Cloud Deployment: The Automated CI/CD Pipeline](#cloud-deployment-the-automated-cicd-pipeline)
-    -   [Step 1: Prerequisites](#step-1-prerequisites)
-    -   [Step 2: GitHub Repository Secrets Setup](#step-2-github-repository-secrets-setup)
-    -   [Step 3: The Automated Deployment](#step-3-the-automated-deployment)
+    -   [One-Time Setup (Prerequisites)](#one-time-setup-prerequisites)
+    -   [Automated Deployment](#automated-deployment)
 6.  [Running Terraform Commands Locally](#running-terraform-commands-locally)
 7.  [Destroying the Cloud Infrastructure](#destroying-the-cloud-infrastructure)
 8.  [Key Design Decisions & Concepts](#key-design-decisions--concepts)
-9.  [Future Improvements](#future-improvements)
+9.  [Release History](#release-history)
 
 ## Project Overview
 
 This project demonstrates a real-world software development lifecycle, from local containerized development to a fully automated cloud deployment.
 
 **Core Features:**
+-   **Secure HTTPS:** All traffic is encrypted using an SSL certificate from AWS Certificate Manager.
+-   **Custom Domain:** The application is served from a custom domain/subdomain managed by Amazon Route 53.
 -   **User-Facing GUI:** A simple web interface for user registration, login, and link management.
 -   **Authenticated API:** Users must be logged in to create or view their links.
 -   **High-Performance Redirects:** A dedicated redirect service using a Redis cache for sub-millisecond lookups.
--   **Asynchronous Analytics:** Link clicks are processed in the background via a message queue (RabbitMQ) without slowing down the user redirect.
--   **Infrastructure as Code (IaC):** The entire AWS infrastructure is defined and managed by Terraform.
+-   **Asynchronous Analytics:** Link clicks are processed in the background via a message queue (RabbitMQ) without slowing down user redirects.
+-   **Infrastructure as Code (IaC):** The entire AWS infrastructure is defined idempotently and managed by Terraform.
 -   **Automated CI/CD:** A multi-stage GitHub Actions workflow automatically builds, tests (implicitly), and deploys the entire application on every push to the `main` branch.
 
 ## System Architecture
 
-The system is composed of five distinct microservices and a suite of managed AWS services, all orchestrated by an Application Load Balancer.
+The system is composed of five distinct microservices and a suite of managed AWS services, all orchestrated by an Application Load Balancer. All public traffic is served over HTTPS.
 
 ```mermaid
 graph TD
     subgraph "User's Browser"
-        A["Web GUI"]
+        A["Web GUI (HTTPS)"]
     end
 
     subgraph "AWS Cloud"
         subgraph "Application Load Balancer"
-            B("Listener Rules")
+            B("HTTPS Listener on Port 443")
         end
 
         subgraph "ECS Services on Fargate"
@@ -62,7 +63,7 @@ graph TD
         end
     end
 
-    A -- "Requests" --> B
+    A -- "Secure Requests" --> B
 
     B -- "API: /users or /token" --> D
     B -- "API: /links" --> E
@@ -72,7 +73,7 @@ graph TD
     D -- "Reads/Writes" --> H
     E -- "Reads/Writes" --> I
     E -- "Writes to Cache" --> J
-    F -- "Cache Miss" --> E
+    F -- "Internal API Call (Cache Miss)" --> B
     F -- "Cache Hit" --> J
     F -- "Publishes Click Event" --> K
     G -- "Consumes Events" --> K
@@ -102,49 +103,54 @@ Running the entire application on your local machine is the recommended way to d
 
 ## Cloud Deployment: The Automated CI/CD Pipeline
 
-This project is configured for fully automated deployment to AWS. Every `git push` to the `main` branch triggers a safe, multi-stage deployment.
+This project is configured for fully automated deployment to AWS. The process requires a one-time setup of cloud resources and secrets, after which every `git push` to the `main` branch will trigger a safe, multi-stage deployment.
 
-### Step 1: Prerequisites
+### One-Time Setup (Prerequisites)
 
-1.  **AWS Account:** You need an AWS account.
-2.  **AWS CLI:** Install and configure the AWS CLI on your local machine (`aws configure`).
-3.  **Terraform:** Install Terraform.
-4.  **S3 Backend:** You must manually create an S3 bucket and a DynamoDB table for the Terraform backend as defined in `terraform/backend.tf` before the first deployment.
+1.  **AWS Account:** You need an active AWS account.
+2.  **Custom Domain & DNS Delegation:**
+    -   Own a custom domain name (e.g., `c3mcal.com`).
+    -   In Amazon Route 53, create a public **Hosted Zone** for a subdomain you will use for AWS projects (e.g., `aws.c3mcal.com`).
+    -   In your domain registrar's settings (e.g., Cloudflare, GoDaddy), add `NS` records to delegate control of that subdomain to the four Name Servers provided by your new Route 53 Hosted Zone.
+3.  **SSL Certificate:**
+    -   In AWS Certificate Manager (ACM), request a public certificate for your application's domain (e.g., `linkshrink.aws.c3mcal.com`) and a wildcard (e.g., `*.aws.c3mcal.com`).
+    -   Use **DNS validation**. Since Route 53 now controls your DNS, you can use the "Create records in Route 53" button for instant, automatic validation.
+    -   Once the certificate is "Issued", copy its **ARN**.
+4.  **Terraform Backend:** Manually create an S3 bucket and a DynamoDB table in AWS to store Terraform's state securely, as defined in `terraform/backend.tf`.
+5.  **GitHub Repository Secrets:** In your repository's **Settings > Secrets and variables > Actions**, create the following secrets. The workflow uses these to authenticate and configure the deployment.
 
-### Step 2: GitHub Repository Secrets Setup
+| Secret Name                   | Description                                                |
+| ----------------------------- | ---------------------------------------------------------- |
+| `AWS_ACCESS_KEY_ID`           | Your IAM user's Access Key ID.                             |
+| `AWS_SECRET_ACCESS_KEY`       | Your IAM user's Secret Access Key.                         |
+| `TF_VAR_DB_PASSWORD`          | A strong password for the `user-db`.                       |
+| `TF_VAR_LINK_DB_PASSWORD`     | A strong password for the `link-db`.                       |
+| `TF_VAR_JWT_SECRET_KEY`       | A long, random string for signing JWTs.                    |
+| `TF_VAR_MQ_PASSWORD`          | A strong password for the RabbitMQ user.                   |
+| `TF_VAR_PARENT_ZONE_NAME`     | The name of your delegated Route 53 Hosted Zone (e.g., `aws.c3mcal.com`). |
+| `TF_VAR_DOMAIN_NAME`          | The full domain for this specific application (e.g., `linkshrink.aws.c3mcal.com`). |
+| `TF_VAR_ACM_CERTIFICATE_ARN`  | The full ARN of your issued ACM certificate.               |
 
-The workflow requires access to sensitive information. Store these as encrypted secrets in your repository's **Settings > Secrets and variables > Actions**.
+*Note: The `TF_VAR_` prefix is important, as it allows Terraform to automatically recognize these as input variables.*
 
-| Secret Name                   | Description                                  |
-| ----------------------------- | -------------------------------------------- |
-| `AWS_ACCESS_KEY_ID`           | Your IAM user's Access Key ID.               |
-| `AWS_SECRET_ACCESS_KEY`       | Your IAM user's Secret Access Key.           |
-| `TF_VAR_DB_PASSWORD`          | A strong password for the `user-db`.         |
-| `TF_VAR_LINK_DB_PASSWORD`     | A strong password for the `link-db`.         |
-| `TF_VAR_JWT_SECRET_KEY`       | A long, random string for signing JWTs.      |
-| `TF_VAR_MQ_PASSWORD`          | A strong password for the RabbitMQ user.     |
+### Automated Deployment
 
-### Step 3: The Automated Deployment
+With the one-time setup complete, the process is fully automated.
 
-With secrets configured, the process is fully automated.
+1.  **Develop on a branch:** Create a new branch for your changes (`git checkout -b fix/new-feature`).
+2.  **Open a Pull Request:** When ready, push your branch and open a Pull Request against `main`. The CI workflow will run a `terraform plan` to show you a safe preview of the infrastructure changes.
+3.  **Merge to `main`:** After reviewing the plan, merge the PR. Merging to `main` automatically triggers the full deployment workflow.
 
-1.  **Make a code change**.
-2.  **Commit and push** that change to the `main` branch: `git push origin main`.
-
-Pushing to `main` automatically triggers the workflow. Monitor its progress in the "Actions" tab of your repository.
+Monitor the progress in the "Actions" tab of your repository. Upon completion, your application will be live at your custom domain.
 
 ## Running Terraform Commands Locally
 
-If you need to run `terraform` commands (like `plan`, `apply`, or `destroy`) from your own computer instead of using the GitHub Actions workflow, you must provide your secrets locally.
+To run `terraform` commands from your own computer, you must provide your secrets locally.
 
 1.  Navigate to the `/terraform` directory.
-2.  Copy the example variables file:
-    ```bash
-    cp terraform.tfvars.example terraform.tfvars
-    ```
-3.  Open the new `terraform.tfvars` file and replace the placeholder values with your actual secrets.
-4.  **Do not commit `terraform.tfvars` to Git.** The `.gitignore` file is configured to prevent this.
-5.  You can now run commands like `terraform plan` or `terraform apply` locally.
+2.  Copy the example variables file: `cp terraform.tfvars.example terraform.tfvars`
+3.  Open `terraform.tfvars` and replace the placeholders with your actual secrets. This file is ignored by Git and must not be committed.
+4.  You can now run commands like `terraform plan` or `terraform apply` locally.
 
 ## Destroying the Cloud Infrastructure
 
@@ -157,12 +163,21 @@ terraform destroy
 ## Key Design Decisions & Concepts
 
 -   **Three-Phase Deployment:** The CI/CD pipeline is explicitly split into three jobs (Create Repos, Build Images, Deploy Services) to correctly handle infrastructure dependencies.
--   **Immutable Image Tags:** ECR repositories are configured to be immutable, ensuring deployment integrity.
+-   **Immutable Image Tags:** ECR repositories are configured to be immutable, ensuring deployment integrity and preventing accidental changes.
 -   **Git Commit as Source of Truth:** The Git commit hash is used as the Docker image tag, creating a direct, auditable link between code and what's running in production.
 
-## Future Improvements
+## Release History
 
--   **Add HTTPS:** Implement an ACM certificate and update the ALB listener to use HTTPS for secure traffic.
--   **Custom Domain:** Add Route 53 configuration to point a custom domain to the Application Load Balancer.
--   **Unit & Integration Tests:** Add a testing stage to the CI/CD pipeline before deployment.
--   **Staging Environment:** Duplicate the Terraform setup to create a separate "staging" environment.
+-   **v1.1.0 - The Secure Cloud Update (Current)**
+    -   Added full HTTPS encryption for all traffic using AWS Certificate Manager.
+    -   Configured the application to run on a custom subdomain (`linkshrink.aws.c3mcal.com`).
+    -   Implemented automated DNS record creation via Terraform and Route 53.
+    -   Hardened the CI/CD pipeline to be fully parameterized and reusable.
+    -   Fixed a bug where the `analytics-service` would fail to start.
+    -   Fixed a bug where the `redirect-service` could not handle the `/r/` path.
+    -   Fixed a bug where the `link-service` generated incorrect `localhost` URLs.
+
+-   **v1.0.0 - Initial Stable Release**
+    -   First stable, fully functional release of the LinkShrink application.
+    -   Established the core 5-service microservices architecture.
+    -   Launched the initial automated deployment pipeline to AWS with a functional frontend.
