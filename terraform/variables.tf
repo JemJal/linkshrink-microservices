@@ -34,3 +34,18 @@ variable "mq_password" {
   type        = string
   sensitive   = true
 }
+
+variable "domain_name" {
+  description = "The custom domain name for the application (e.g., linkshrink.aws.c3mcal.com)."
+  type        = string
+}
+ 
+variable "acm_certificate_arn" {
+  description = "The ARN of the issued ACM certificate for the domain."
+  type        = string
+}
+
+variable "parent_zone_name" {
+  description = "The parent hosted zone where the subdomain record will be created (e.g., aws.c3mcal.com)."
+  type        = string
+}

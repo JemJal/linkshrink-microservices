@@ -62,7 +62,7 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# ================= CRITICAL FIX 1: NAT GATEWAY =================
+# ================= NAT GATEWAY =================
 # A NAT Gateway allows services in a PRIVATE subnet to access the internet
 # for things like downloading OS updates or external APIs, without being
 # accessible FROM the internet. This is a best practice.
@@ -99,4 +99,8 @@ resource "aws_route_table_association" "private" {
   count          = length(aws_subnet.private)
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private.id
+}
+
+data "aws_route53_zone" "parent" {
+  name = var.parent_zone_name
 }
