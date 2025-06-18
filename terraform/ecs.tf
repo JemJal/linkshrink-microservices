@@ -13,7 +13,6 @@ resource "aws_lb" "main" {
   security_groups    = [aws_security_group.alb_sg.id]
   subnets            = aws_subnet.public[*].id
 }
-
 # --- NEW V2.0: "VUE GUI" SERVICE RESOURCES ---
 resource "aws_ecs_task_definition" "linkshrink_vue_gui" {
   family                   = "linkshrink-vue-gui-task"
@@ -36,14 +35,13 @@ resource "aws_ecs_task_definition" "linkshrink_vue_gui" {
     }
   }])
 }
-
 resource "aws_lb_target_group" "linkshrink_vue_gui" {
   name        = "linkshrink-vue-gui-tg"
   port        = 80
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
   target_type = "ip"
-  health_check {
+  health_ck {
     path                = "/"
     healthy_threshold   = 2
     unhealthy_threshold = 2
@@ -51,7 +49,6 @@ resource "aws_lb_target_group" "linkshrink_vue_gui" {
     interval            = 5
   }
 }
-
 resource "aws_ecs_service" "linkshrink_vue_gui" {
   name            = "linkshrink-vue-gui"
   cluster         = aws_ecs_cluster.main.id
@@ -63,31 +60,18 @@ resource "aws_ecs_service" "linkshrink_vue_gui" {
     subnets         = aws_subnet.private[*].id
     security_groups = [aws_security_group.ecs_service_sg.id]
   }
-
   load_balancer {
     target_group_arn = aws_lb_target_group.linkshrink_vue_gui.arn
     container_name   = "linkshrink-vue-gui"
     container_port   = 80
   }
-
-  # --- THIS IS THE FINAL FIX ---
-  # This explicitly tells Terraform to wait until the HTTPS listener has been
-  # successfully updated before attempting to create this service. This resolves
-  # the "target group does not have an associated load balancer" error.
-  depends_on = [
-    aws_lb_listener.https
-  ]
-  # ----------------------------
 }
 # -----------------------------------------------
-
 # --- ALB LISTENERS ---
-
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
-
   default_action {
     type = "redirect"
     redirect {
@@ -97,22 +81,18 @@ resource "aws_lb_listener" "http" {
     }
   }
 }
-
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.main.arn
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-2016-08"
   certificate_arn   = var.acm_certificate_arn
-
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.linkshrink_vue_gui.arn
   }
 }
-
 # --- All listener rules now attach to the secure 'https' listener ---
-
 resource "aws_lb_listener_rule" "user_service" {
   listener_arn = aws_lb_listener.https.arn
   priority     = 100
@@ -126,7 +106,6 @@ resource "aws_lb_listener_rule" "user_service" {
     }
   }
 }
-
 resource "aws_lb_listener_rule" "internal_api" {
   listener_arn = aws_lb_listener.https.arn
   priority     = 95
@@ -140,7 +119,6 @@ resource "aws_lb_listener_rule" "internal_api" {
     }
   }
 }
-
 resource "aws_lb_listener_rule" "link_service" {
   listener_arn = aws_lb_listener.https.arn
   priority     = 90
@@ -154,7 +132,6 @@ resource "aws_lb_listener_rule" "link_service" {
     }
   }
 }
-
 resource "aws_lb_listener_rule" "redirect_service" {
   listener_arn = aws_lb_listener.https.arn
   priority     = 80
@@ -168,7 +145,6 @@ resource "aws_lb_listener_rule" "redirect_service" {
     }
   }
 }
-
 # --- Target Groups: Pools of our backend services ---
 resource "aws_lb_target_group" "user_service" {
   name        = "user-service-tg"
@@ -180,7 +156,6 @@ resource "aws_lb_target_group" "user_service" {
     path = "/health"
   }
 }
-
 resource "aws_lb_target_group" "link_service" {
   name        = "link-service-tg"
   port        = 8000
@@ -191,7 +166,6 @@ resource "aws_lb_target_group" "link_service" {
     path = "/health"
   }
 }
-
 resource "aws_lb_target_group" "redirect_service" {
   name        = "redirect-service-tg"
   port        = 8000
@@ -202,24 +176,19 @@ resource "aws_lb_target_group" "redirect_service" {
     path = "/health"
   }
 }
-
 # --- ECS Cluster & IAM Role ---
 resource "aws_ecs_cluster" "main" {
   name = "linkshrink-cluster"
 }
-
 resource "aws_iam_role" "ecs_task_execution_role" {
   name               = "ecs_task_execution_role"
   assume_role_policy = jsonencode({ Version = "2012-10-17", Statement = [{ Action = "sts:AssumeRole", Effect = "Allow", Principal = { Service = "ecs-tasks.amazonaws.com" } }] })
 }
-
 resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
   role       = aws_iam_role.ecs_task_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
-
 # --- TASK & SERVICE DEFINITIONS ---
-
 # User Service
 resource "aws_ecs_task_definition" "user_service" {
   family                   = "user-service-task"
@@ -242,7 +211,6 @@ resource "aws_ecs_task_definition" "user_service" {
     }
   }])
 }
-
 resource "aws_ecs_service" "user_service" {
   name                              = "user-service"
   cluster                           = aws_ecs_cluster.main.id
@@ -261,7 +229,6 @@ resource "aws_ecs_service" "user_service" {
   }
   depends_on = [aws_lb_listener_rule.user_service]
 }
-
 # Link Service
 resource "aws_ecs_task_definition" "link_service" {
   family                   = "link-service-task"
@@ -285,7 +252,6 @@ resource "aws_ecs_task_definition" "link_service" {
     }
   }])
 }
-
 resource "aws_ecs_service" "link_service" {
   name                              = "link-service"
   cluster                           = aws_ecs_cluster.main.id
@@ -304,7 +270,6 @@ resource "aws_ecs_service" "link_service" {
   }
   depends_on = [aws_lb_listener_rule.link_service]
 }
-
 # Redirect Service
 resource "aws_ecs_task_definition" "redirect_service" {
   family                   = "redirect-service-task"
@@ -330,7 +295,6 @@ resource "aws_ecs_task_definition" "redirect_service" {
     }
   }])
 }
-
 resource "aws_ecs_service" "redirect_service" {
   name                              = "redirect-service"
   cluster                           = aws_ecs_cluster.main.id
@@ -349,7 +313,6 @@ resource "aws_ecs_service" "redirect_service" {
   }
   depends_on = [aws_lb_listener_rule.redirect_service]
 }
-
 # --- Analytics Service Definition ---
 resource "aws_ecs_task_definition" "analytics_service" {
   family                   = "analytics-service-task"
@@ -372,7 +335,6 @@ resource "aws_ecs_task_definition" "analytics_service" {
     }
   }])
 }
-
 resource "aws_ecs_service" "analytics_service" {
   name            = "analytics-service"
   cluster         = aws_ecs_cluster.main.id
@@ -384,7 +346,6 @@ resource "aws_ecs_service" "analytics_service" {
     security_groups = [aws_security_group.ecs_service_sg.id]
   }
 }
-
 # --- CloudWatch Log Groups ---
 resource "aws_cloudwatch_log_group" "user_service_logs" {
   name              = "/ecs/user-service"
@@ -402,7 +363,6 @@ resource "aws_cloudwatch_log_group" "analytics_service_logs" {
   name              = "/ecs/analytics-service"
   retention_in_days = 7
 }
-
 resource "aws_cloudwatch_log_group" "linkshrink_vue_gui_logs" {
   name              = "/ecs/linkshrink-vue-gui"
   retention_in_days = 7
