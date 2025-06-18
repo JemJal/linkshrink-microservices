@@ -11,6 +11,16 @@ resource "aws_security_group" "alb_sg" {
     to_port     = 80
     cidr_blocks = ["0.0.0.0/0"]
   }
+  
+  # This new rule allows secure HTTPS traffic to reach your new listener.
+  ingress {
+    description = "Allow HTTPS traffic from anywhere"
+    protocol    = "tcp"
+    from_port   = 443
+    to_port     = 443
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     protocol    = "-1"
     from_port   = 0
