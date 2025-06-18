@@ -402,6 +402,7 @@ resource "aws_cloudwatch_log_group" "analytics_service_logs" {
   name              = "/ecs/analytics-service"
   retention_in_days = 7
 }
+
 resource "aws_cloudwatch_log_group" "linkshrink_vue_gui_logs" {
   name              = "/ecs/linkshrink-vue-gui"
   retention_in_days = 7
