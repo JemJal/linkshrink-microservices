@@ -70,10 +70,31 @@ resource "aws_ecs_service" "web_gui_service" {
 }
 # -----------------------------------------------
 
+# --- ALB LISTENERS ---
+
+# This listener catches insecure HTTP traffic and permanently redirects it to HTTPS.
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+# This is the main secure listener for all application traffic.
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-2016-08"
+  certificate_arn   = var.acm_certificate_arn
 
   default_action {
     type             = "forward"
@@ -81,9 +102,10 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# --- CORRECTED LISTENER RULES ---
+# --- All listener rules now attach to the secure 'https' listener ---
+
 resource "aws_lb_listener_rule" "user_service" {
-  listener_arn = aws_lb_listener.http.arn
+  listener_arn = aws_lb_listener.https.arn
   priority     = 100
   action {
     type             = "forward"
@@ -96,8 +118,22 @@ resource "aws_lb_listener_rule" "user_service" {
   }
 }
 
+resource "aws_lb_listener_rule" "internal_api" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 95
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.link_service.arn
+  }
+  condition {
+    path_pattern {
+      values = ["/internal/links*"]
+    }
+  }
+}
+
 resource "aws_lb_listener_rule" "link_service" {
-  listener_arn = aws_lb_listener.http.arn
+  listener_arn = aws_lb_listener.https.arn
   priority     = 90
   action {
     type             = "forward"
@@ -110,27 +146,8 @@ resource "aws_lb_listener_rule" "link_service" {
   }
 }
 
-# --- THIS IS THE ONE AND ONLY CHANGE TO THE FILE ---
-# This new rule handles the internal API call from the redirect-service to the link-service.
-resource "aws_lb_listener_rule" "internal_api" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 95 # A priority between the /links and /r rules
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.link_service.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/internal/links*"]
-    }
-  }
-}
-# ----------------------------------------------------
-
 resource "aws_lb_listener_rule" "redirect_service" {
-  listener_arn = aws_lb_listener.http.arn
+  listener_arn = aws_lb_listener.https.arn
   priority     = 80
   action {
     type             = "forward"
@@ -177,7 +194,7 @@ resource "aws_lb_target_group" "redirect_service" {
   }
 }
 
-# ECS Cluster & IAM Role (Unchanged)
+# --- ECS Cluster & IAM Role ---
 resource "aws_ecs_cluster" "main" {
   name = "linkshrink-cluster"
 }
@@ -212,11 +229,7 @@ resource "aws_ecs_task_definition" "user_service" {
     ]
     logConfiguration = {
       logDriver = "awslogs"
-      options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.user_service_logs.name
-        "awslogs-region"        = var.aws_region
-        "awslogs-stream-prefix" = "ecs"
-      }
+      options = { "awslogs-group" = aws_cloudwatch_log_group.user_service_logs.name, "awslogs-region" = var.aws_region, "awslogs-stream-prefix" = "ecs" }
     }
   }])
 }
@@ -255,15 +268,12 @@ resource "aws_ecs_task_definition" "link_service" {
     environment = [
       { name = "DATABASE_URL", value = "postgresql://${aws_db_instance.link_db.username}:${var.link_db_password}@${aws_db_instance.link_db.address}:${aws_db_instance.link_db.port}/${aws_db_instance.link_db.db_name}?sslmode=require" },
       { name = "JWT_SECRET_KEY", value = var.jwt_secret_key },
-      { name = "BASE_URL", value = "http://${aws_lb.main.dns_name}" }
+      # --- THIS IS THE CORRECTED VALUE ---
+      { name = "BASE_URL", value = "https://${var.domain_name}" }
     ]
     logConfiguration = {
       logDriver = "awslogs"
-      options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.link_service_logs.name
-        "awslogs-region"        = var.aws_region
-        "awslogs-stream-prefix" = "ecs"
-      }
+      options = { "awslogs-group" = aws_cloudwatch_log_group.link_service_logs.name, "awslogs-region" = var.aws_region, "awslogs-stream-prefix" = "ecs" }
     }
   }])
 }
@@ -304,15 +314,12 @@ resource "aws_ecs_task_definition" "redirect_service" {
       { name = "RABBITMQ_HOST", value = aws_mq_broker.rabbitmq.instances[0].ip_address },
       { name = "MQ_USERNAME", value = "mqadmin" },
       { name = "MQ_PASSWORD", value = var.mq_password },
-      { name = "LINK_SERVICE_URL", value = "http://${aws_lb.main.dns_name}" }
+      # --- THIS IS THE CORRECTED VALUE ---
+      { name = "LINK_SERVICE_URL", value = "https://${var.domain_name}" }
     ]
     logConfiguration = {
       logDriver = "awslogs"
-      options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.redirect_service_logs.name
-        "awslogs-region"        = var.aws_region
-        "awslogs-stream-prefix" = "ecs"
-      }
+      options = { "awslogs-group" = aws_cloudwatch_log_group.redirect_service_logs.name, "awslogs-region" = var.aws_region, "awslogs-stream-prefix" = "ecs" }
     }
   }])
 }
@@ -338,20 +345,57 @@ resource "aws_ecs_service" "redirect_service" {
 
 # --- CloudWatch Log Groups ---
 resource "aws_cloudwatch_log_group" "user_service_logs" {
-  name              = "/ecs/user-service"
+  name = "/ecs/user-service"
   retention_in_days = 7
 }
-
 resource "aws_cloudwatch_log_group" "link_service_logs" {
-  name              = "/ecs/link-service"
+  name = "/ecs/link-service"
   retention_in_days = 7
 }
-
 resource "aws_cloudwatch_log_group" "redirect_service_logs" {
-  name              = "/ecs/redirect-service"
+  name = "/ecs/redirect-service"
   retention_in_days = 7
 }
 resource "aws_cloudwatch_log_group" "web_gui_service_logs" {
-  name              = "/ecs/web-gui-service"
+  name = "/ecs/web-gui-service"
   retention_in_days = 7
+}
+resource "aws_cloudwatch_log_group" "analytics_service_logs" {
+  name = "/ecs/analytics-service"
+  retention_in_days = 7
+}
+
+# --- Analytics Service Definition ---
+resource "aws_ecs_task_definition" "analytics_service" {
+  family                   = "analytics-service-task"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = 256
+  memory                   = 512
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  container_definitions = jsonencode([{
+    name  = "analytics-service"
+    image = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/analytics-service:${var.image_tag}"
+    environment = [
+      { name = "RABBITMQ_HOST", value = aws_mq_broker.rabbitmq.instances[0].ip_address },
+      { name = "MQ_USERNAME", value = "mqadmin" },
+      { name = "MQ_PASSWORD", value = var.mq_password }
+    ]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = { "awslogs-group" = aws_cloudwatch_log_group.analytics_service_logs.name, "awslogs-region" = var.aws_region, "awslogs-stream-prefix" = "ecs" }
+    }
+  }])
+}
+
+resource "aws_ecs_service" "analytics_service" {
+  name            = "analytics-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.analytics_service.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+  network_configuration {
+    subnets         = aws_subnet.private[*].id
+    security_groups = [aws_security_group.ecs_service_sg.id]
+  }
 }

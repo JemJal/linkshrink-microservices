@@ -3,29 +3,29 @@
 name: Deploy LinkShrink Services
 
 on:
+  # Run on pushes to the main branch (our production deployment)
   push:
     branches:
       - main
+  # Also run on pull requests targeting the main branch (our pre-deployment check)
+  pull_request:
+    branches:
+      - main
+  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 env:
   AWS_REGION: eu-north-1
 
 jobs:
-  # ====================================================================
-  # === JOB 1: Create ECR Repositories First
-  # ====================================================================
+  # (Job 1: create_ecr_repos remains exactly the same)
   create_ecr_repos:
     name: Create ECR Repositories
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -35,7 +35,6 @@ jobs:
         working-directory: ./terraform
       - name: Terraform Apply (ECR Repos Only)
         env:
-          # This block now includes ALL variables to prevent interactive prompts
           TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
           TF_VAR_link_db_password: ${{ secrets.TF_VAR_LINK_DB_PASSWORD }}
           TF_VAR_jwt_secret_key: ${{ secrets.TF_VAR_JWT_SECRET_KEY }}
@@ -52,30 +51,23 @@ jobs:
             -target=aws_ecr_repository.web_gui_service
         working-directory: ./terraform
 
-  # ====================================================================
-  # === JOB 2: Build and Push Images
-  # ====================================================================
+  # (Job 2: build_and_push_images remains exactly the same)
   build_and_push_images:
     name: Build and Push All Docker Images
     runs-on: ubuntu-latest
     needs: create_ecr_repos
     outputs:
       image_tag: ${{ steps.tag_image.outputs.tag }}
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-      - name: Login to Amazon ECR
-        id: login-ecr
+      - id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-      - name: Set image tag from Git commit hash
-        id: tag_image
+      - id: tag_image
         run: echo "tag=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
       - name: Build, tag, and push all images
         env:
@@ -83,32 +75,25 @@ jobs:
           IMAGE_TAG: ${{ steps.tag_image.outputs.tag }}
         run: |
           BACKEND_SERVICES=("user-service" "link-service" "redirect-service" "analytics-service")
-          for SERVICE in "${BACKEND_SERVICES[@]}"
-          do
+          for SERVICE in "${BACKEND_SERVICES[@]}"; do
             echo "--- Building and Pushing $SERVICE ---"
             docker build --no-cache -t $ECR_REGISTRY/$SERVICE:$IMAGE_TAG -f $SERVICE/Dockerfile $SERVICE
             docker push $ECR_REGISTRY/$SERVICE:$IMAGE_TAG
           done
-
           echo "--- Building and Pushing web-gui-service ---"
           docker build --no-cache -t $ECR_REGISTRY/web-gui-service:$IMAGE_TAG -f web-gui/Dockerfile web-gui
           docker push $ECR_REGISTRY/web-gui-service:$IMAGE_TAG
 
-  # ====================================================================
-  # === JOB 3: Deploy the Rest of the Infrastructure
-  # ====================================================================
-  deploy_services:
-    name: Deploy ECS Services and Infrastructure
+  # Job 3 is now smarter
+  deploy_or_plan:
+    name: Terraform Plan or Deploy
     runs-on: ubuntu-latest
     needs: build_and_push_images
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -116,16 +101,31 @@ jobs:
       - name: Terraform Init
         run: terraform init
         working-directory: ./terraform
-      - name: Terraform Apply (All Remaining Resources)
+        
+      - name: Terraform Plan (for Pull Requests)
+        # This step ONLY runs for Pull Requests. It's a safe 'dry run'.
+        if: github.event_name == 'pull_request'
         env:
-          # This block also includes ALL variables for the main deployment
-          TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
-          TF_VAR_link_db_password: ${{ secrets.TF_VAR_LINK_DB_PASSWORD }}
-          TF_VAR_jwt_secret_key: ${{ secrets.TF_VAR_JWT_SECRET_KEY }}
-          TF_VAR_mq_password: ${{ secrets.TF_VAR_MQ_PASSWORD }}
-          TF_VAR_parent_zone_name: ${{ secrets.TF_VAR_PARENT_ZONE_NAME }}
-          TF_VAR_domain_name: ${{ secrets.TF_VAR_DOMAIN_NAME }}
-          TF_VAR_acm_certificate_arn: ${{ secrets.TF_VAR_ACM_CERTIFICATE_ARN }}
-        run: |
-          terraform apply -auto-approve -var="image_tag=${{ needs.build_and_push_images.outputs.image_tag }}"
+            TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+            TF_VAR_link_db_password: ${{ secrets.TF_VAR_LINK_DB_PASSWORD }}
+            TF_VAR_jwt_secret_key: ${{ secrets.TF_VAR_JWT_SECRET_KEY }}
+            TF_VAR_mq_password: ${{ secrets.TF_VAR_MQ_PASSWORD }}
+            TF_VAR_parent_zone_name: ${{ secrets.TF_VAR_PARENT_ZONE_NAME }}
+            TF_VAR_domain_name: ${{ secrets.TF_VAR_DOMAIN_NAME }}
+            TF_VAR_acm_certificate_arn: ${{ secrets.TF_VAR_ACM_CERTIFICATE_ARN }}
+        run: terraform plan -var="image_tag=${{ needs.build_and_push_images.outputs.image_tag }}"
+        working-directory: ./terraform
+
+      - name: Terraform Apply (for pushes to main)
+        # This step ONLY runs when you push directly to the 'main' branch (i.e., after a PR is merged).
+        if: github.event_name == 'push'
+        env:
+            TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+            TF_VAR_link_db_password: ${{ secrets.TF_VAR_LINK_DB_PASSWORD }}
+            TF_VAR_jwt_secret_key: ${{ secrets.TF_VAR_JWT_SECRET_KEY }}
+            TF_VAR_mq_password: ${{ secrets.TF_VAR_MQ_PASSWORD }}
+            TF_VAR_parent_zone_name: ${{ secrets.TF_VAR_PARENT_ZONE_NAME }}
+            TF_VAR_domain_name: ${{ secrets.TF_VAR_DOMAIN_NAME }}
+            TF_VAR_acm_certificate_arn: ${{ secrets.TF_VAR_ACM_CERTIFICATE_ARN }}
+        run: terraform apply -auto-approve -var="image_tag=${{ needs.build_and_push_images.outputs.image_tag }}"
         working-directory: ./terraform

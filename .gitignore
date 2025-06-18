@@ -16,3 +16,6 @@ venv/
 
 # OS-specific files
 .DS_Store
+
+# File to keep track of new updates
+updates.md
