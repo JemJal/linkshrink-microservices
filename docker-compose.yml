@@ -1,13 +1,14 @@
 # docker-compose.yml
+
 version: '3.8'
 
 services:
   # --- Service Dependencies ---
   rabbitmq:
-    image: rabbitmq:3.9-management-alpine
+    image: rabbitmq:3.13-management-alpine
     ports:
-      - "5672:5672"   # AMQP port
-      - "15672:15672" # Management UI port
+      - "5672:5672"
+      - "15672:15672"
 
   redis:
     image: redis:6-alpine
@@ -19,6 +20,14 @@ services:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=user_db
+    # --- THIS IS THE NEW PART ---
+    # This tells Docker how to check if Postgres is ready to accept connections.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d user_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # --------------------------
   
   link-db:
     image: postgres:13-alpine
@@ -27,30 +36,48 @@ services:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=link_db
+    # --- THIS IS THE NEW PART ---
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d link_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # --------------------------
 
   # --- Application Services ---
   user-service:
     build: ./user-service
-    # REMOVED: The 'ports' section was removed. Only Nginx should be exposed.
     environment:
       - DATABASE_URL=postgresql://user:password@user-db/user_db
       - JWT_SECRET_KEY=710fc70a238cc61ae2abce051dcabeb6e4b4a6d8c085b2f51ed72dbb1a18c6a1
-    depends_on: [user-db]
+    # --- THIS IS THE UPDATED PART ---
+    # This now waits for the 'user-db' to pass its healthcheck before starting.
+    depends_on:
+      user-db:
+        condition: service_healthy
+    # ------------------------------
 
   link-service:
     build: ./link-service
-    # REMOVED: The 'ports' section was removed.
     environment:
       - DATABASE_URL=postgresql://user:password@link-db/link_db
       - JWT_SECRET_KEY=710fc70a238cc61ae2abce051dcabeb6e4b4a6d8c085b2f51ed72dbb1a18c6a1
-    depends_on: [link-db]
+      # We provide this for local testing as well
+      - BASE_URL=http://localhost:8080
+    # --- THIS IS THE UPDATED PART ---
+    depends_on:
+      link-db:
+        condition: service_healthy
+    # ------------------------------
   
   redirect-service:
     build: ./redirect-service
     environment:
       - REDIS_HOST=redis
       - RABBITMQ_HOST=rabbitmq
-    depends_on: [redis, rabbitmq]
+      # Provide this for internal calls during local dev
+      - LINK_SERVICE_URL=http://link-service:8000
+    depends_on: [redis, rabbitmq, link-service]
 
   analytics-service:
     build: ./analytics-service
@@ -62,15 +89,28 @@ services:
   gateway:
     image: nginx:1.21-alpine
     volumes:
-      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro # Mount config read-only
-      - ./web-gui/static:/usr/share/nginx/html:ro
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
-      # This is the single public entry point for our app
       - "8080:80" 
     depends_on:
       - user-service
       - link-service
       - redirect-service
+  
+  # --- V2.0 User Interface (Vue.js Development Server) ---
+  linkshrink-vue-gui:
+    build:
+      context: ./linkshrink-vue-gui
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./linkshrink-vue-gui:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - gateway
 
 volumes:
   user_db_data:
