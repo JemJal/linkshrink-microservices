@@ -3,28 +3,21 @@
 name: Deploy LinkShrink Services
 
 on:
-  # Run on pushes to the main branch (our production deployment)
   push:
     branches:
       - main
-  # Also run on pull requests targeting the main branch (our pre-deployment check)
   pull_request:
     branches:
       - main
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 env:
   AWS_REGION: eu-north-1
 
 jobs:
-  # ====================================================================
-  # === JOB 1: Create ECR Repositories First
-  # ====================================================================
   create_ecr_repos:
     name: Create ECR Repositories
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,7 +42,6 @@ jobs:
           TF_VAR_domain_name: ${{ secrets.TF_VAR_DOMAIN_NAME }}
           TF_VAR_acm_certificate_arn: ${{ secrets.TF_VAR_ACM_CERTIFICATE_ARN }}
         run: |
-          # UPDATED: The list of targets has changed for v2.0
           terraform apply -auto-approve \
             -target=aws_ecr_repository.user_service \
             -target=aws_ecr_repository.link_service \
@@ -58,16 +50,12 @@ jobs:
             -target=aws_ecr_repository.linkshrink_vue_gui
         working-directory: ./terraform
 
-  # ====================================================================
-  # === JOB 2: Build and Push Images
-  # ====================================================================
   build_and_push_images:
     name: Build and Push All Docker Images
     runs-on: ubuntu-latest
     needs: create_ecr_repos
     outputs:
       image_tag: ${{ steps.tag_image.outputs.tag }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -88,8 +76,6 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.tag_image.outputs.tag }}
         run: |
-          # UPDATED: The list of services now includes the new Vue GUI
-          # and the build process is now uniform for all services.
           SERVICES=("user-service" "link-service" "redirect-service" "analytics-service" "linkshrink-vue-gui")
           
           for SERVICE in "${SERVICES[@]}"; do
@@ -99,12 +85,45 @@ jobs:
           done
 
   # ====================================================================
-  # === JOB 3: Deploy the Rest of the Infrastructure
+  # === THIS IS THE NEW TEMPORARY CLEANUP JOB
   # ====================================================================
+  state_cleanup_job:
+    name: Clean Up Terraform State
+    runs-on: ubuntu-latest
+    needs: build_and_push_images
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./terraform
+      - name: Remove ghost resources from state
+        run: |
+          echo "Forcibly removing ghost resources from Terraform state to break dependency lock."
+          echo "This only affects the state file, not real resources."
+          terraform state rm 'aws_lb_target_group.web_gui_service' || true
+          terraform state rm 'aws_ecs_service.web_gui_service' || true
+          terraform state rm 'aws_ecs_task_definition.web_gui_service' || true
+          terraform state rm 'aws_cloudwatch_log_group.web_gui_service_logs' || true
+          echo "State cleanup complete."
+        working-directory: ./terraform
+
   deploy_or_plan:
     name: Terraform Plan or Deploy
     runs-on: ubuntu-latest
-    needs: build_and_push_images
+    # This job now depends on the cleanup job completing successfully
+    needs: [build_and_push_images, state_cleanup_job]
+    # This ensures this job always runs to show a plan/apply result, even if cleanup was skipped on a PR.
+    if: always() 
 
     steps:
       - name: Checkout code
