@@ -58,21 +58,31 @@ resource "aws_ecs_service" "linkshrink_vue_gui" {
   task_definition = aws_ecs_task_definition.linkshrink_vue_gui.arn
   desired_count   = 1
   launch_type     = "FARGATE"
+  
   network_configuration {
     subnets         = aws_subnet.private[*].id
     security_groups = [aws_security_group.ecs_service_sg.id]
   }
+
   load_balancer {
     target_group_arn = aws_lb_target_group.linkshrink_vue_gui.arn
     container_name   = "linkshrink-vue-gui"
     container_port   = 80
   }
+
+  # --- THIS IS THE FINAL FIX ---
+  # This explicitly tells Terraform to wait until the HTTPS listener has been
+  # successfully updated before attempting to create this service. This resolves
+  # the "target group does not have an associated load balancer" error.
+  depends_on = [
+    aws_lb_listener.https
+  ]
+  # ----------------------------
 }
 # -----------------------------------------------
 
 # --- ALB LISTENERS ---
 
-# This listener catches insecure HTTP traffic and permanently redirects it to HTTPS.
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
@@ -88,7 +98,6 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# This is the main secure listener for all application traffic.
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.main.arn
   port              = 443
@@ -100,15 +109,6 @@ resource "aws_lb_listener" "https" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.linkshrink_vue_gui.arn
   }
-
-  # --- THIS IS THE FINAL FIX ---
-  # This block tells Terraform how to handle replacing the target group.
-  # It forces Terraform to create the new target group and update this listener
-  # BEFORE it tries to destroy the old target group, preventing a "ResourceInUse" error.
-  lifecycle {
-    create_before_destroy = true
-  }
-  # ----------------------------
 }
 
 # --- All listener rules now attach to the secure 'https' listener ---
@@ -402,6 +402,7 @@ resource "aws_cloudwatch_log_group" "analytics_service_logs" {
   name              = "/ecs/analytics-service"
   retention_in_days = 7
 }
+
 resource "aws_cloudwatch_log_group" "linkshrink_vue_gui_logs" {
   name              = "/ecs/linkshrink-vue-gui"
   retention_in_days = 7
