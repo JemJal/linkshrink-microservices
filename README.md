@@ -189,3 +189,5 @@ terraform destroy
     -   First stable, fully functional release of the LinkShrink application.
     -   Established the core 5-service microservices architecture.
     -   Launched the initial automated deployment pipeline to AWS with a functional frontend.
+
+# A line to force a new deployment...
