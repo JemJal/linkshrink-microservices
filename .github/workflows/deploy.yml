@@ -84,44 +84,11 @@ jobs:
             docker push $ECR_REGISTRY/$SERVICE:$IMAGE_TAG
           done
 
-  # ====================================================================
-  # === THIS IS THE NEW TEMPORARY CLEANUP JOB
-  # ====================================================================
-  state_cleanup_job:
-    name: Clean Up Terraform State
-    runs-on: ubuntu-latest
-    needs: build_and_push_images
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Terraform Init
-        run: terraform init
-        working-directory: ./terraform
-      - name: Remove ghost resources from state
-        run: |
-          echo "Forcibly removing ghost resources from Terraform state to break dependency lock."
-          echo "This only affects the state file, not real resources."
-          terraform state rm 'aws_lb_target_group.web_gui_service' || true
-          terraform state rm 'aws_ecs_service.web_gui_service' || true
-          terraform state rm 'aws_ecs_task_definition.web_gui_service' || true
-          terraform state rm 'aws_cloudwatch_log_group.web_gui_service_logs' || true
-          echo "State cleanup complete."
-        working-directory: ./terraform
-
   deploy_or_plan:
     name: Terraform Plan or Deploy
     runs-on: ubuntu-latest
     # This job now depends on the cleanup job completing successfully
-    needs: [build_and_push_images, state_cleanup_job]
+    needs: build_and_push_images
     # This ensures this job always runs to show a plan/apply result, even if cleanup was skipped on a PR.
     if: always() 
 
