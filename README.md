@@ -25,8 +25,9 @@ This project demonstrates a real-world software development lifecycle, from loca
 **Core Features:**
 -   **Secure HTTPS:** All traffic is encrypted using an SSL certificate from AWS Certificate Manager.
 -   **Custom Domain:** The application is served from a custom domain/subdomain managed by Amazon Route 53.
--   **User-Facing GUI:** A simple web interface for user registration, login, and link management.
+-   **User-Facing GUI:** A reactive frontend built with Vue.js for user registration, login, and link management.
 -   **Authenticated API:** Users must be logged in to create or view their links.
+-   **Custom Aliases:** Users can now specify their own custom short codes for links.
 -   **High-Performance Redirects:** A dedicated redirect service using a Redis cache for sub-millisecond lookups.
 -   **Asynchronous Analytics:** Link clicks are processed in the background via a message queue (RabbitMQ) without slowing down user redirects.
 -   **Infrastructure as Code (IaC):** The entire AWS infrastructure is defined idempotently and managed by Terraform.
@@ -39,7 +40,7 @@ The system is composed of five distinct microservices and a suite of managed AWS
 ```mermaid
 graph TD
     subgraph "User's Browser"
-        A["Web GUI (HTTPS)"]
+        A["Vue.js GUI (HTTPS)"]
     end
 
     subgraph "AWS Cloud"
@@ -48,7 +49,7 @@ graph TD
         end
 
         subgraph "ECS Services on Fargate"
-            C["Web GUI Service"]
+            C["Vue.js GUI (linkshrink-vue-gui)"]
             D["User Service"]
             E["Link Service"]
             F["Redirect Service"]
@@ -81,14 +82,14 @@ graph TD
 
 ## File & Directory Structure
 
--   **Core Application Services:** Source code for each microservice (`user-service/`, `link-service/`, etc.).
--   **Local Development & Tooling:** Files used exclusively for local development (`docker-compose.yml`, `gateway/nginx.conf`).
+-   **Core Application Services:** Source code for each microservice (`user-service/`, `link-service/`, etc.) and the new Vue.js frontend (`linkshrink-vue-gui/`).
+-   **Local Development & Tooling:** The file used for orchestrating all services locally (`docker-compose.yml`).
 -   **Cloud Infrastructure & CI/CD (AWS):** Files defining the production environment and its automation (`.github/`, `terraform/`).
 -   **Project-Wide Configuration:** General project files (`.gitignore`, `.dockerignore`, `README.md`).
 
 ## Getting Started: Local Development
 
-Running the entire application on your local machine is the recommended way to develop new features.
+Running the entire application on your local machine is the recommended way to develop new features. The setup uses Docker Compose to orchestrate all services, including the Vue.js development server with hot-reloading.
 
 **Prerequisites:**
 -   Docker & Docker Compose
@@ -99,7 +100,7 @@ Running the entire application on your local machine is the recommended way to d
     ```bash
     docker-compose up --build
     ```
-3.  Open your web browser and navigate to `http://localhost:8080`.
+3.  Open your web browser and navigate to `http://localhost:8080`. You will see the Vue.js application.
 
 ## Cloud Deployment: The Automated CI/CD Pipeline
 
@@ -168,7 +169,14 @@ terraform destroy
 
 ## Release History
 
--   **v1.1.0 - The Secure Cloud Update (Current)**
+-   **v2.0.0-beta.1 - The Vue.js Frontend (Current)**
+    -   Overhauled the entire frontend with a modern Vue.js single-page application (`linkshrink-vue-gui`).
+    -   Introduced the ability for users to create links with custom short codes (aliases).
+    -   Replaced the static Nginx-based local UI with a full-featured Vue development server for a better developer experience.
+    -   Updated the CI/CD pipeline to seamlessly build and deploy the new Vue.js frontend alongside the backend services.
+    -   Resolved complex Terraform state-locking and resource dependency issues during the migration, hardening the deployment process for future updates.
+
+-   **v1.1.0 - The Secure Cloud Update**
     -   Added full HTTPS encryption for all traffic using AWS Certificate Manager.
     -   Configured the application to run on a custom subdomain (`linkshrink.aws.c3mcal.com`).
     -   Implemented automated DNS record creation via Terraform and Route 53.
